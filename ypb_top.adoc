@@ -97,23 +97,23 @@ This specification defines:
 [source,systemverilog]
 ----
 `define YPB_REQ_T(cfg, DATA_WIDTH) \
-  struct packed {
-    logic                             vreq;
-    logic                             preq;
-    logic [VLEN-1:0]                  vaddr;
-    logic [PLEN-1:0]                  paddr;
-    logic [DATA_WIDTH/8-1:0]          be;
-    logic [1:0]                       size;
-    logic                             we;
-    logic [DATA_WIDTH-1:0]            wdata;
-    logic [DATA_USER_WIDTH-1:0]       wuser;
-    logic [ID_WIDTH-1:0]              aid;
-    logic [AMO_WIDTH-1:0]             atop;
-    logic                             access_type;
-    logic                             cacheable;
-    logic                             kill_req;
-    logic                             need_rsp;
-    logic                             rready;
+  struct packed { \
+    logic                             vreq; \
+    logic                             preq; \
+    logic [VLEN-1:0]                  vaddr; \
+    logic [PLEN-1:0]                  paddr; \
+    logic [DATA_WIDTH/8-1:0]          be; \
+    logic [1:0]                       size; \
+    logic                             we; \
+    logic [DATA_WIDTH-1:0]            wdata; \
+    logic [DATA_USER_WIDTH-1:0]       wuser; \
+    logic [ID_WIDTH-1:0]              aid; \
+    logic [AMO_WIDTH-1:0]             atop; \
+    logic                             access_type; \
+    logic                             cacheable; \
+    logic                             kill_req; \
+    logic                             need_rsp; \
+    logic                             rready; \
   }
 ----
 
@@ -122,14 +122,14 @@ This specification defines:
 [source,systemverilog]
 ----
 `define YPB_RSP_T(cfg, DATA_WIDTH) \
-  struct packed {
-    logic                             vgnt;
-    logic                             pgnt;
-    logic                             rvalid;
-    logic [DATA_WIDTH-1:0]            rdata;
-    logic [DATA_USER_WIDTH-1:0]       ruser;
-    logic [ID_WIDTH-1:0]              rid;
-    logic                             err;
+  struct packed { \
+    logic                             vgnt; \
+    logic                             pgnt; \
+    logic                             rvalid; \
+    logic [DATA_WIDTH-1:0]            rdata; \
+    logic [DATA_USER_WIDTH-1:0]       ruser; \
+    logic [ID_WIDTH-1:0]              rid; \
+    logic                             err; \
   }
 ----
 
@@ -182,7 +182,7 @@ This specification defines:
 
 |`aid`
 |M→S
-|Request ID. Used to match responses (`rid`) to requests when multiple transactions are in flight.
+|Request ID. Used to match responses (`rid`) to requests when multiple transactions are in flight, mandatory to support multiple outstanding requests.
 
 |`atop`
 |M→S
@@ -217,14 +217,16 @@ Configuration rules and options:
 ** `wdata` may be tied to `'0` (ignored by the slave),
 * If no *read* is ever issued on this port:
 ** `we` shall be fixed to `1`,
-** `rdata` shall be fixed to `'0` by the slave (no useful read data),
+** `rdata` shall be fixed to `'0` by the slave, may be ignored by the master.
 ** Write completion and/or errors may still be signaled with `rvalid`/`err`.
 * If the interface is not used in VIPT mode:
-** `vreq = 0`, `vaddr` is don’t-care, `vgnt` may be ignored by the master.
+** `vreq = 0`, `vaddr` is don’t-care, `vgnt` may be ignored by the master, `vreq` may be ignored by the slave.
 * If the master is always ready to accept responses:
 ** `rready` may be tied to `1'b1`.
 * If only a single outstanding transaction is supported:
-** `aid` and `rid` shall be constant zero.
+** `aid` and `rid` shall be constant zero. 
+** `aid` may be ignored by the slave
+** `rid` may be ignored by the master
 * If the master never wants to suppress responses:
 ** `need_rsp` may be tied to `1'b1`.
 
@@ -279,12 +281,12 @@ All phases are synchronous to a common clock.
 === 4.1 Attribute placement rules
 
 * Address‑related attributes (`be`, `size`, `aid`) are associated with the **first accepted address phase** of the transaction:
-** In *P2P‑VIPT*: they shall be driven and valid on the cycle where `vreq & vgnt = 1`.
-** In *P2P‑PhysOnly* and *BUS*: they shall be driven and valid on the cycle where `preq & pgnt = 1`.
+** In *P2P‑VIPT*: they shall be driven and valid and stable on the cycle where `vreq = 1` until `vgnt = 1` or `kill_request = 1`.
+** In *P2P‑PhysOnly* and *BUS*: they shall be driven and valid and stable on the cycle where `preq = 1` until `pgnt = 1`.
 * Data‑ and access‑type attributes (`wdata`, `cacheable`, `access_type`, plus `we` and `atop`) are associated with the **physical phase**:
-** In all modes, they shall be driven and valid on the cycle where `preq & pgnt = 1`.
+** In all modes, they shall be driven and valid and stable on the cycle where `preq = 1` until `pgnt = 1`.
 
-TO BE DEFINE: this ensures compatibility with CRI of HPdcache, there is probably no need to have `be`, `size` at the initial request in *P2P‑VIPT* mode. 
+TO BE DEFINE: this ensures compatibility with CRI of HPdcache, there is probably no need to have `be`, `size` and `aid` at the initial request in *P2P‑VIPT* mode. 
 
 === 4.2 Virtual Phase
 
@@ -301,6 +303,7 @@ Acceptance rule:
 
 * At cycle N, if `vreq = 1` and `vgnt = 1`, the virtual phase of the request is accepted.
 * The master shall keep `vaddr`, `be`, `size`, and `aid` stable while `vreq = 1` and until the cycle where `vreq & vgnt = 1`.
+* When virtual phase is granted by slave, master shall sent Physical Phase at the next cycle, if master is not ready (translation not ready), access need to be killed by sending `kill_request = 1`
 
 === 4.3 Physical Phase
 
